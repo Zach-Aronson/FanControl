@@ -3,13 +3,13 @@ import spidev
 import time
 import gpiod
 import threading
-import subprocess
+import RPi.GPIO as GPIO
 
 # === CONFIGURATION ===
 SPI_BUS = 0
 SPI_DEVICE = 0
 CS_GPIO = 5
-FAN_PWM_GPIO = 18  # Hardware PWM pin
+FAN_PWM_GPIO = 18  # Must be hardware PWM-capable
 FAN_RPM_GPIO = 7   # BCM GPIO number
 
 SET_POINT_F = 110.0
@@ -48,10 +48,17 @@ def max31865_read_temp():
     temp_c = (-242.02 + 2.2228 * RTD_RESISTANCE + 2.5859e-3 * RTD_RESISTANCE**2 - 4.8260e-6 * RTD_RESISTANCE**3)
     return temp_c * 9/5 + 32
 
+# === FAN PWM SETUP (using RPi.GPIO) ===
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(FAN_PWM_GPIO, GPIO.OUT)
+pwm = GPIO.PWM(FAN_PWM_GPIO, 25000)
+pwm.start(0)
+
 def set_fan_duty(duty):
     duty = max(0, min(100, duty))
-    subprocess.run(["pwm-ctl", "--pin", str(FAN_PWM_GPIO), "--freq", "25000", "--duty", str(duty)], check=False)
+    pwm.ChangeDutyCycle(duty)
 
+# === FAN RPM SETUP USING GPIOD ===
 rpm_count = 0
 lock = threading.Lock()
 
@@ -63,14 +70,12 @@ def rpm_event_callback(line, event_type):
 def setup_rpm_gpio():
     rpm_chip = gpiod.Chip("gpiochip0")
     rpm_line = rpm_chip.get_line(FAN_RPM_GPIO)
-    config = gpiod.LineRequest()
-    config.consumer = "RPM_INPUT"
-    config.request_type = gpiod.LINE_REQ_EV_FALLING_EDGE
-    rpm_line.request(config)
+    rpm_line.request(consumer="RPM_INPUT", type=gpiod.LINE_REQ_EV_FALLING_EDGE)
     return rpm_line
 
+# === MAIN LOOP ===
 try:
-    print("Starting Fan Control System with gpiod RPM monitoring")
+    print("Starting Fan Control System with gpiod RPM + RPi.GPIO PWM")
     rpm_line = setup_rpm_gpio()
 
     while True:
@@ -97,4 +102,6 @@ except KeyboardInterrupt:
     print("Shutting down.")
 finally:
     set_fan_duty(0)
+    pwm.stop()
+    GPIO.cleanup()
     spi.close()
