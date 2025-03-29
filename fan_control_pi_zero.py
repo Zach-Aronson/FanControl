@@ -10,7 +10,7 @@ SPI_BUS = 0
 SPI_DEVICE = 0
 CS_GPIO = 5
 FAN_PWM_GPIO = 18  # Hardware PWM-capable pin
-FAN_RPM_GPIO = 7   # RPM sensing pin
+FAN_RPM_GPIO = 17   # RPM sensing pin
 
 SET_POINT_F = 110.0
 
