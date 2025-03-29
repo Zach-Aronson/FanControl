@@ -3,18 +3,18 @@ import spidev
 import time
 import gpiod
 import threading
-import RPi.GPIO as GPIO
+import pigpio
 
 # === CONFIGURATION ===
 SPI_BUS = 0
 SPI_DEVICE = 0
 CS_GPIO = 5
-FAN_PWM_GPIO = 18  # Must be hardware PWM-capable
-FAN_RPM_GPIO = 7   # BCM GPIO number
+FAN_PWM_GPIO = 18  # Hardware PWM-capable pin
+FAN_RPM_GPIO = 7   # RPM sensing pin
 
 SET_POINT_F = 110.0
 
-# === MAX31865 SETUP ===
+# === SETUP SPI for MAX31865 ===
 spi = spidev.SpiDev()
 spi.open(SPI_BUS, SPI_DEVICE)
 spi.max_speed_hz = 500000
@@ -48,15 +48,16 @@ def max31865_read_temp():
     temp_c = (-242.02 + 2.2228 * RTD_RESISTANCE + 2.5859e-3 * RTD_RESISTANCE**2 - 4.8260e-6 * RTD_RESISTANCE**3)
     return temp_c * 9/5 + 32
 
-# === FAN PWM SETUP (using RPi.GPIO) ===
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(FAN_PWM_GPIO, GPIO.OUT)
-pwm = GPIO.PWM(FAN_PWM_GPIO, 25000)
-pwm.start(0)
+# === FAN PWM SETUP using pigpio ===
+pi = pigpio.pi()
+if not pi.connected:
+    raise RuntimeError("Could not connect to pigpio daemon")
 
 def set_fan_duty(duty):
     duty = max(0, min(100, duty))
-    pwm.ChangeDutyCycle(duty)
+    frequency = 25000  # 25 kHz
+    duty_cycle = int(1_000_000 * duty / 100)  # convert % to range 0-1M
+    pi.hardware_PWM(FAN_PWM_GPIO, frequency, duty_cycle)
 
 # === FAN RPM SETUP USING GPIOD ===
 rpm_count = 0
@@ -75,7 +76,7 @@ def setup_rpm_gpio():
 
 # === MAIN LOOP ===
 try:
-    print("Starting Fan Control System with gpiod RPM + RPi.GPIO PWM")
+    print("Starting Fan Control System with pigpio PWM and gpiod RPM")
     rpm_line = setup_rpm_gpio()
 
     while True:
@@ -102,6 +103,6 @@ except KeyboardInterrupt:
     print("Shutting down.")
 finally:
     set_fan_duty(0)
-    pwm.stop()
-    GPIO.cleanup()
+    pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
+    pi.stop()
     spi.close()
