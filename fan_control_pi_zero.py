@@ -1,72 +1,36 @@
 
-import spidev
 import time
+import board
+import busio
+import digitalio
+import adafruit_max31865
+import pigpio
 import gpiod
 import threading
-import pigpio
 
 # === CONFIGURATION ===
-SPI_BUS = 0
-SPI_DEVICE = 0
-CS_GPIO = 5
-FAN_PWM_GPIO = 18  # Hardware PWM-capable pin
-FAN_RPM_GPIO = 17   # RPM sensing pin
-
+FAN_PWM_GPIO = 18  # GPIO18 (Pin 12)
+FAN_RPM_GPIO = 17  # GPIO17 (Pin 11)
+CS_GPIO = 5        # GPIO5 (Pin 29) for MAX31865
 SET_POINT_F = 110.0
 
-# === SETUP SPI for MAX31865 ===
-spi = spidev.SpiDev()
-spi.open(SPI_BUS, SPI_DEVICE)
-spi.max_speed_hz = 500000
+# === Setup SPI and MAX31865 using Adafruit library ===
+spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
+cs = digitalio.DigitalInOut(board.D5)  # Match to GPIO5
+sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
 
-chip = gpiod.Chip('gpiochip0')
-cs_line = chip.get_line(CS_GPIO)
-cs_line.request(consumer='MAX31865_CS', type=gpiod.LINE_REQ_DIR_OUT, default_vals=[1])
-
-def max31865_read_temp():
-    def write_register(reg, val):
-        cs_line.set_value(0)
-        spi.xfer2([0x80 | reg, val])
-        cs_line.set_value(1)
-
-    def read_registers(reg, length):
-        cs_line.set_value(0)
-        result = spi.xfer2([reg] + [0x00] * length)
-        cs_line.set_value(1)
-        return result[1:]
-
-    write_register(0x00, 0xC2)  # 3-wire mode
-    time.sleep(0.065)
-    data = read_registers(0x01, 7)
-
-    rtd_msb = data[0]
-    rtd_lsb = data[1]
-    rtd_raw = ((rtd_msb << 8) | rtd_lsb) >> 1
-
-    RTD_RESISTANCE = rtd_raw * 400.0 / 32768.0
-    RTD_NOMINAL = 100.0
-    temp_c = (-242.02 + 2.2228 * RTD_RESISTANCE + 2.5859e-3 * RTD_RESISTANCE**2 - 4.8260e-6 * RTD_RESISTANCE**3)
-
-    # Debug prints
-    print(f"Raw RTD value: {rtd_raw}")
-    print(f"RTD resistance: {RTD_RESISTANCE:.2f} ohms")
-    fault_status = data[6]
-    print(f"MAX31865 fault register: 0x{fault_status:02X}")
-
-    return temp_c * 9/5 + 32
-
-# === FAN PWM SETUP using pigpio ===
+# === Setup pigpio for PWM ===
 pi = pigpio.pi()
 if not pi.connected:
     raise RuntimeError("Could not connect to pigpio daemon")
 
 def set_fan_duty(duty):
     duty = max(0, min(100, duty))
-    frequency = 25000  # 25 kHz
-    duty_cycle = int(1_000_000 * duty / 100)  # convert % to range 0-1M
+    frequency = 25000
+    duty_cycle = int(1_000_000 * duty / 100)
     pi.hardware_PWM(FAN_PWM_GPIO, frequency, duty_cycle)
 
-# === FAN RPM SETUP USING GPIOD ===
+# === Setup gpiod for RPM sensing ===
 rpm_count = 0
 lock = threading.Lock()
 
@@ -83,16 +47,23 @@ def setup_rpm_gpio():
 
 # === MAIN LOOP ===
 try:
-    print("Starting Fan Control System with pigpio PWM and gpiod RPM")
+    print("Starting Fan Control System with Adafruit MAX31865 library")
     rpm_line = setup_rpm_gpio()
 
     while True:
-        temp_f = max31865_read_temp()
-        print(f"Temperature: {temp_f:.2f} F")
+        try:
+            temp_c = sensor.temperature
+            temp_f = temp_c * 9 / 5 + 32
+            print(f"Temperature: {temp_f:.2f} F")
+        except Exception as e:
+            print(f"Sensor error: {e}")
+            temp_f = -459.67  # Force safe temp on error
 
+        # Fan control logic
         duty = max(0, min(100, (temp_f - 100) * 100 / 30))
         set_fan_duty(duty)
 
+        # Measure RPM
         start_time = time.time()
         with lock:
             rpm_count = 0
@@ -112,4 +83,3 @@ finally:
     set_fan_duty(0)
     pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
     pi.stop()
-    spi.close()
