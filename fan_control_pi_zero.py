@@ -35,7 +35,7 @@ def max31865_read_temp():
         cs_line.set_value(1)
         return result[1:]
 
-    write_register(0x00, 0xC2)
+    write_register(0x00, 0xC2)  # 3-wire mode
     time.sleep(0.065)
     data = read_registers(0x01, 7)
 
@@ -46,6 +46,13 @@ def max31865_read_temp():
     RTD_RESISTANCE = rtd_raw * 400.0 / 32768.0
     RTD_NOMINAL = 100.0
     temp_c = (-242.02 + 2.2228 * RTD_RESISTANCE + 2.5859e-3 * RTD_RESISTANCE**2 - 4.8260e-6 * RTD_RESISTANCE**3)
+
+    # Debug prints
+    print(f"Raw RTD value: {rtd_raw}")
+    print(f"RTD resistance: {RTD_RESISTANCE:.2f} ohms")
+    fault_status = data[6]
+    print(f"MAX31865 fault register: 0x{fault_status:02X}")
+
     return temp_c * 9/5 + 32
 
 # === FAN PWM SETUP using pigpio ===
