@@ -15,7 +15,7 @@ import os
 FAN_PWM_GPIO = 18       # GPIO18 (Pin 12)
 FAN_RPM_GPIO = 17       # GPIO17 (Pin 11)
 CS_GPIO = 5             # GPIO5 (Pin 29) for MAX31865
-LOG_DIR = "/home/pi/FanControl/logs"
+LOG_DIR = "/home/Zach/FanControl/logs"
 PWM_FREQ = 25000        # 25kHz PWM
 SET_POINT_F = 110.0     # Fan ramp threshold (adjust as needed)
 
