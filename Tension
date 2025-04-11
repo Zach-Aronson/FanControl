@@ -1,24 +1,29 @@
-from gpiozero import Servo
-from time import sleep
+from gpiozero import Servo, Button
 from gpiozero.pins.pigpio import PiGPIOFactory
+from signal import pause
+from time import sleep
 
-# Use pigpio for better PWM precision
+# Setup
 factory = PiGPIOFactory()
-servo = Servo(24, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory)
+servo = Servo(24, min_pulse_width=0.0006, max_pulse_width=0.0024, pin_factory=factory)
+switch = Button(18, pull_up=False)  # Active HIGH, uses internal pull-down
 
-def set_angle(degrees):
-    # Convert 0-180 degrees to servo value (-1 to 1)
-    servo.value = (degrees - 90) / 90
+def to_sixty_degrees():
+    # 60 degrees = (60 - 90) / 90 = -0.333
+    servo.value = -0.333
+    print("Switch OFF: Servo to 60°")
 
-# Main routine
-for _ in range(2):
-    set_angle(45)
-    sleep(1)
-    set_angle(90)
-    sleep(1)
-    set_angle(45)
-    sleep(1)
+def to_base_position():
+    servo.value = 0  # Base = 90 degrees
+    print("Switch ON: Servo to base (90°)")
 
-# Return to 0 degrees
-set_angle(0)
+# Link switch events
+switch.when_pressed = to_base_position
+switch.when_released = to_sixty_degrees
+
+# Start at 60 degrees
+to_sixty_degrees()
+
+pause()  # Keeps the script running
+)
 
