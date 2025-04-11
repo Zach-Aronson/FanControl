@@ -6,7 +6,7 @@ from time import sleep
 # Setup for precise PWM and input reading
 factory = PiGPIOFactory()
 servo = Servo(24, min_pulse_width=0.0006, max_pulse_width=0.0024, pin_factory=factory)
-switch = Button(18, pull_up=False)  # Pull-down logic
+switch = Button(23, pull_up=False)  # Pull-down logic
 
 # Track servo angle (for logging)
 current_angle = None
