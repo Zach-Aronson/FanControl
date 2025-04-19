@@ -1,26 +1,37 @@
-
-from gpiozero import Servo
+from gpiozero import Servo, Button
 from gpiozero.pins.pigpio import PiGPIOFactory
+from signal import pause
 from time import sleep
 
-# Setup
+# Setup for precise PWM and input reading
 factory = PiGPIOFactory()
 servo = Servo(24, min_pulse_width=0.0006, max_pulse_width=0.0024, pin_factory=factory)
+switch = Button(18, pull_up=False)  # Pull-down logic
 
-def move_to_angle(degrees):
+# Track servo angle (for logging)
+current_angle = None
+
+def set_angle(degrees):
+    global current_angle
     value = (degrees - 90) / 90  # Convert to -1 to 1
     servo.value = value
-    print(f"Servo moved to {degrees}° (value = {value})")
+    current_angle = degrees
+    print(f"Servo moved to {degrees}°")
 
-# Move to 60°
-move_to_angle(60)
-sleep(5)
+# Actions based on toggle switch state
+def to_sixty_degrees():
+    set_angle(60)
 
-# Return to 90° (starting position)
-move_to_angle(90)
-sleep(1)
+def to_base_position():
+    set_angle(90)
 
-# Stop sending signal
-servo.detach()
-print("Movement complete. Servo detached.")
+# Set up event triggers
+switch.when_pressed = to_base_position
+switch.when_released = to_sixty_degrees
+
+# Initialize at 60°
+to_sixty_degrees()
+
+pause()  # Keep the program alive
+
 
