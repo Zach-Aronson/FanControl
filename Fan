@@ -42,15 +42,17 @@ def rpm_event_callback(line, event_type):
         rpm_count += 1
 
 def setup_rpm_gpio():
-    """Attempts to request the GPIO line, retries if busy."""
+    """Attempts to request the GPIO line, retries cleanly if busy."""
     try:
         chip = gpiod.Chip("gpiochip0")
         line = chip.get_line(FAN_RPM_GPIO)
         line.request(consumer="RPM", type=gpiod.LINE_REQ_EV_FALLING_EDGE)
         return line
     except OSError as e:
-        if e.errno == 16:  # Resource busy
-            print("GPIO line busy — forcing release and retry...")
+        if e.errno == 16:
+            print("GPIO line busy — retrying with chip reset...")
+            time.sleep(0.5)
+            chip.close()
             time.sleep(0.5)
             chip = gpiod.Chip("gpiochip0")
             line = chip.get_line(FAN_RPM_GPIO)
