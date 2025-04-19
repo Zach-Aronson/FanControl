@@ -2,36 +2,51 @@ from gpiozero import Servo, Button
 from gpiozero.pins.pigpio import PiGPIOFactory
 from signal import pause
 from time import sleep
+import keyboard
+import threading
 
-# Setup for precise PWM and input reading
+# Setup
 factory = PiGPIOFactory()
 servo = Servo(24, min_pulse_width=0.0006, max_pulse_width=0.0024, pin_factory=factory)
-switch = Button(23, pull_up=False)  # Pull-down logic
+switch = Button(23, pull_up=False)
 
-# Track servo angle (for logging)
-current_angle = None
+# Track current angle
+current_angle = 80  # starting value
 
 def set_angle(degrees):
     global current_angle
-    value = (degrees - 90) / 90  # Convert to -1 to 1
+    degrees = max(0, min(180, degrees))  # clamp within servo limits
+    value = (degrees - 90) / 90  # convert to -1 to 1
     servo.value = value
     current_angle = degrees
     print(f"Servo moved to {degrees}°")
 
-# Actions based on toggle switch state
-def to_sixty_degrees():
-    set_angle(80)
+# Switch actions
+def to_switch():
+    set_angle(current_angle)
 
 def to_base_position():
     set_angle(0)
 
-# Set up event triggers
+# Keyboard listener for arrow key
+def keyboard_listener():
+    global current_angle
+    while True:
+        if keyboard.is_pressed("up"):
+            set_angle(current_angle + 1)
+            sleep(0.1)  # debounce so it doesn't fly through angles
+
+# Event bindings
 switch.when_pressed = to_base_position
-switch.when_released = to_sixty_degrees
+switch.when_released = to_switch
 
-# Initialize at 60°
-to_sixty_degrees()
+# Start at initial position
+to_switch()
 
-pause()  # Keep the program alive
+# Run the keyboard listener in a background thread
+key_thread = threading.Thread(target=keyboard_listener, daemon=True)
+key_thread.start()
+
+pause()
 
 
