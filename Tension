@@ -23,7 +23,7 @@ def to_sixty_degrees():
     set_angle(60)
 
 def to_base_position():
-    set_angle(255)
+    set_angle(160)
 
 # Set up event triggers
 switch.when_pressed = to_base_position
