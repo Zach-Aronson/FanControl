@@ -1,4 +1,4 @@
-#!/usr/bin/env python3 
+#!/usr/bin/env python3
 import time
 import board
 import busio
@@ -19,9 +19,9 @@ LOG_DIR = "/home/Zach/FanControl/logs"
 PWM_FREQ = 25000        # 25kHz PWM
 SET_POINT_F = 110.0     # Fan ramp threshold (adjust as needed)
 
-# === SPI + MAX31865 Setup (Adafruit CircuitPython) ===
+# === SPI + MAX31865 Setup ===
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-cs = digitalio.DigitalInOut(board.D5)  # GPIO5
+cs = digitalio.DigitalInOut(board.D5)
 sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
 
 # === PWM Setup ===
@@ -33,7 +33,7 @@ def set_fan_duty(duty):
     duty = max(0, min(100, duty))
     pi.hardware_PWM(FAN_PWM_GPIO, PWM_FREQ, int(1_000_000 * duty / 100))
 
-# === RPM Input Setup ===
+# === RPM Measurement ===
 rpm_count = 0
 lock = threading.Lock()
 
@@ -75,7 +75,7 @@ try:
             temp_f = temp_c * 9 / 5 + 32
         except Exception as e:
             print(f"Sensor error: {e}")
-            temp_f = -459.67
+            temp_f = -459.67  # Absolute zero fallback
 
         print(f"Temperature: {temp_f:.2f} F")
 
@@ -88,15 +88,19 @@ try:
             rpm_count = 0
         while time.time() - start_time < 2:
             if rpm_line.event_wait(sec=1):
-                event = rpm_line.event_read()
-                rpm_event_callback(rpm_line, event.event_type)
+                try:
+                    event = rpm_line.event_read()
+                    rpm_event_callback(rpm_line, event.event_type)
+                except Exception as e:
+                    print(f"RPM event error: {e}")
 
         with lock:
             count = rpm_count
-        rpm = (count / 2.0) * 30
+        rpm = (count / 2.0) * 30  # 2 pulses per rev
+
         print(f"Fan RPM: {rpm:.0f}, Fan Duty: {duty:.0f}%\n")
 
-        # Log data
+        # Log to CSV
         with open(log_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
