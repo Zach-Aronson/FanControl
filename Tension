@@ -20,7 +20,7 @@ def set_angle(degrees):
 
 # Actions based on toggle switch state
 def to_sixty_degrees():
-    set_angle(60)
+    set_angle(0)
 
 def to_base_position():
     set_angle(160)
