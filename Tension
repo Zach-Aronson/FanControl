@@ -28,7 +28,7 @@ def to_base_position():
 
 # Set up event triggers
 switch.when_pressed = to_base_position
-switch.when_released = to_swtich 
+switch.when_released = to_switch 
 
 # Initialize at 60°
 to_sixty_degrees()
