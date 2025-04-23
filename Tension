@@ -22,10 +22,10 @@ def set_angle(degrees):
 
 # Actions based on toggle switch state
 def to_switch():
-    set_angle(80)
+    set_angle(0)
 
 def to_base_position():
-    set_angle(0)
+    set_angle(80)
 
 # Set up event triggers
 switch.when_pressed = to_switch
