@@ -5,7 +5,7 @@ from time import sleep
 
 # Setup for precise PWM and input reading
 factory = PiGPIOFactory()
-servo = Servo(24, min_pulse_width=0.0006, max_pulse_width=0.0024, pin_factory=factory)
+servo = Servo(24, min_pulse_width=0.0007, max_pulse_width=0.0023, pin_factory=factory)
 switch = Button(23, pull_up=False)  # Pull-down logic
 
 # Track servo angle (for logging)
@@ -28,8 +28,8 @@ def to_base_position():
     set_angle(0)
 
 # Set up event triggers
-switch.when_pressed = to_base_position
-switch.when_released = to_switch
+switch.when_pressed = to_switch
+switch.when_released = to_base_position
 
 # Initialize servo position
 set_angle(80)
