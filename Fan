@@ -9,6 +9,7 @@ import threading
 import csv
 from datetime import datetime
 import os
+#Servo
 from gpiozero import Servo, Button
 from gpiozero.pins.pigpio import PiGPIOFactory
 from signal import pause
@@ -124,6 +125,7 @@ try:
                 round(duty, 2),
                 round(rpm, 2)
             ])
+#Servo
 # Setup for precise PWM and input reading
 factory = PiGPIOFactory()
 servo = Servo(24, min_pulse_width=0.0007, max_pulse_width=0.0023, pin_factory=factory)
