@@ -199,8 +199,10 @@ def email_logs_and_link():
             for log_file in glob.glob(f"{LOG_DIR}/log_*.csv"):
                 zipf.write(log_file)
 
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(("8.8.8.8", 80))
+ip_address = s.getsockname()[0]
+s.close()
 
         msg = EmailMessage()
         msg['Subject'] = "FanControl Dashboard + Logs"
