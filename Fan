@@ -28,7 +28,7 @@ STATE_FILE = "/home/Zach/FanControl/state.json"
 PWM_FREQ = 25000
 DEFAULT_TARGET_F = 110.0
 WEB_ENDPOINT = "http://127.0.0.1:5000/data"
-EMAIL_SENDER = "Bajapipasword2025"
+EMAIL_SENDER = "baja2025pi@gmail.com"
 EMAIL_PASSWORD = "BAJApassword"
 EMAIL_RECEIVER = "zacharyaronson9@gmail.com"
 
