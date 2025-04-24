@@ -222,27 +222,6 @@ def email_logs_and_link():
     except Exception as e:
         print("Failed to send email:", e)
 
-s.connect(("8.8.8.8", 80))
-ip_address = s.getsockname()[0]
-s.close()
-
-        msg = EmailMessage()
-        msg['Subject'] = "FanControl Dashboard + Logs"
-        msg['From'] = EMAIL_SENDER
-        msg['To'] = EMAIL_RECEIVER
-        msg.set_content(f"FanControl is now online. View your dashboard at: http://{ip_address}:5000")
-
-        with open(zip_path, 'rb') as f:
-            msg.add_attachment(f.read(), maintype='application', subtype='zip', filename='fan_logs.zip')
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-
-        print("Email with logs sent to", EMAIL_RECEIVER)
-    except Exception as e:
-        print("Failed to send email:", e)
-
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 cs = digitalio.DigitalInOut(board.D5)
 sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
