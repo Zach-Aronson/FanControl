@@ -18,6 +18,7 @@ import glob
 import smtplib
 from email.message import EmailMessage
 import zipfile
+import socket
 
 # === CONFIGURATION ===
 FAN_PWM_GPIO = 18
@@ -44,7 +45,90 @@ else:
 
 target_lock = threading.Lock()
 
-HTML_PAGE = """...HTML CONTENT OMITTED FOR BREVITY..."""
+HTML_PAGE = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <title>Fan Control Dashboard</title>
+    <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>
+</head>
+<body>
+    <h2>Live Fan Temperature (F) and Duty Cycle (%)</h2>
+    <form method=\"POST\" action=\"/set_target\">
+        <label for=\"target_temp\">Set Target Temp (°F):</label>
+        <input type=\"number\" id=\"target_temp\" name=\"target_temp\" step=\"0.1\" required>
+        <button type=\"submit\">Update</button>
+    </form>
+    <p>Current target: <span id=\"current_target\">Loading...</span> °F</p>
+    <canvas id=\"tempChart\" width=\"800\" height=\"400\"></canvas>
+    <script>
+        const ctx = document.getElementById('tempChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (F)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        data: [],
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: 'Fan Duty (%)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        data: [],
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y1: {
+                        type: 'linear',
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Temperature (F)'
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Fan Duty (%)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+
+        function updateChart() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(latest => {
+                    document.getElementById('current_target').textContent = latest.target_temp || "N/A";
+                    if (chart.data.labels.length > 50) {
+                        chart.data.labels.shift();
+                        chart.data.datasets[0].data.shift();
+                        chart.data.datasets[1].data.shift();
+                    }
+                    chart.data.labels.push(latest.timestamp);
+                    chart.data.datasets[0].data.push(latest.temperature_f);
+                    chart.data.datasets[1].data.push(latest.fan_duty);
+                    chart.update();
+                });
+        }
+
+        setInterval(updateChart, 2000);
+    </script>
+</body>
+</html>"""
 
 @app.route('/')
 def index():
@@ -115,11 +199,14 @@ def email_logs_and_link():
             for log_file in glob.glob(f"{LOG_DIR}/log_*.csv"):
                 zipf.write(log_file)
 
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+
         msg = EmailMessage()
         msg['Subject'] = "FanControl Dashboard + Logs"
         msg['From'] = EMAIL_SENDER
         msg['To'] = EMAIL_RECEIVER
-        msg.set_content("FanControl is now online. View your dashboard at: http://raspberrypi.local:5000")
+        msg.set_content(f"FanControl is now online. View your dashboard at: http://{ip_address}:5000")
 
         with open(zip_path, 'rb') as f:
             msg.add_attachment(f.read(), maintype='application', subtype='zip', filename='fan_logs.zip')
