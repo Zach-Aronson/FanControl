@@ -13,7 +13,6 @@ import requests
 from flask import Flask, request, render_template_string, jsonify, redirect
 import multiprocessing
 import json
-import sys
 import subprocess
 
 # === CONFIGURATION ===
@@ -30,7 +29,6 @@ app = Flask(__name__)
 data = []
 data_lock = threading.Lock()
 
-# Load persistent state
 if os.path.exists(STATE_FILE):
     with open(STATE_FILE, "r") as f:
         target_temp = json.load(f).get("target_temp", DEFAULT_TARGET_F)
@@ -206,9 +204,11 @@ def reboot_pi():
     subprocess.call(["sudo", "reboot"])
 
 def fan_loop():
+    last_temp_f = None
+    integrated_error = 0
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
-        print("Fan Control System with Web Server Enabled")
+        print("Fan Control System with Web Server and PID Enabled")
 
         while True:
             log_path = get_log_file_path()
@@ -224,8 +224,20 @@ def fan_loop():
             with target_lock:
                 target = target_temp
 
-            print(f"Temperature: {temp_f:.2f} F (Target: {target} F)")
-            duty = max(0, min(100, (temp_f - (target - 10)) * 100 / 30))
+            error = temp_f - target
+            dT = 2  # time interval in seconds
+            derivative = 0 if last_temp_f is None else (temp_f - last_temp_f) / dT
+            integrated_error += error * dT
+            last_temp_f = temp_f
+
+            # PID Coefficients (adjust as needed)
+            Kp = 4.0
+            Ki = 0.1
+            Kd = 8.0
+
+            duty = Kp * error + Ki * integrated_error + Kd * derivative
+
+            print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
             set_fan_duty(duty)
 
             with open(log_path, "a", newline="") as f:
@@ -237,7 +249,7 @@ def fan_loop():
                 ])
 
             post_to_web(temp_f, duty)
-            time.sleep(2)
+            time.sleep(dT)
 
     except Exception as err:
         print("Fatal error in fan loop:", err)
