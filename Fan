@@ -29,7 +29,7 @@ PWM_FREQ = 25000
 DEFAULT_TARGET_F = 110.0
 WEB_ENDPOINT = "http://127.0.0.1:5000/data"
 EMAIL_SENDER = "baja2025pi@gmail.com"
-EMAIL_PASSWORD = "bajapassword1"
+EMAIL_PASSWORD = "etixczntucqtrfoi"
 EMAIL_RECEIVER = "zacharyaronson9@gmail.com"
 
 app = Flask(__name__)
@@ -98,7 +98,7 @@ def load_log_history():
             with open(log_file, "r") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    if "Timestamp" in row and "Temp_F" in row and "Fan_Duty" in row:
+                    if "Timestamp" in row and row["Temp_F"] and row["Fan_Duty"]:
                         data.append({
                             "timestamp": row["Timestamp"],
                             "temperature_f": float(row["Temp_F"]),
