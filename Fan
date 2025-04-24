@@ -14,6 +14,7 @@ from flask import Flask, request, render_template_string, jsonify, redirect
 import multiprocessing
 import json
 import subprocess
+import glob
 
 # === CONFIGURATION ===
 FAN_PWM_GPIO = 18
@@ -36,6 +37,93 @@ else:
     target_temp = DEFAULT_TARGET_F
 
 target_lock = threading.Lock()
+
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <title>Fan Control Dashboard</title>
+    <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>
+</head>
+<body>
+    <h2>Live Fan Temperature (F) and Duty Cycle (%)</h2>
+    <form method=\"POST\" action=\"/set_target\">
+        <label for=\"target_temp\">Set Target Temp (°F):</label>
+        <input type=\"number\" id=\"target_temp\" name=\"target_temp\" step=\"0.1\" required>
+        <button type=\"submit\">Update</button>
+    </form>
+    <p>Current target: <span id=\"current_target\">Loading...</span> °F</p>
+    <canvas id=\"tempChart\" width=\"800\" height=\"400\"></canvas>
+    <script>
+        const ctx = document.getElementById('tempChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (F)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        data: [],
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: 'Fan Duty (%)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        data: [],
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y1: {
+                        type: 'linear',
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Temperature (F)'
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Fan Duty (%)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+
+        function updateChart() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(latest => {
+                    document.getElementById('current_target').textContent = latest.target_temp || "N/A";
+                    if (chart.data.labels.length > 50) {
+                        chart.data.labels.shift();
+                        chart.data.datasets[0].data.shift();
+                        chart.data.datasets[1].data.shift();
+                    }
+                    chart.data.labels.push(latest.timestamp);
+                    chart.data.datasets[0].data.push(latest.temperature_f);
+                    chart.data.datasets[1].data.push(latest.fan_duty);
+                    chart.update();
+                });
+        }
+
+        setInterval(updateChart, 2000);
+    </script>
+</body>
+</html>
+"""
 
 @app.route('/')
 def index():
@@ -78,110 +166,22 @@ def set_target():
     return redirect('/')
 
 def run_web_server():
+    load_log_history()
     app.run(host='0.0.0.0', port=5000, debug=False)
 
-spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-cs = digitalio.DigitalInOut(board.D5)
-sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
-
-pi = pigpio.pi()
-if not pi.connected:
-    raise RuntimeError("Could not connect to pigpio daemon")
-
-def set_fan_duty(duty):
-    duty = max(0, min(100, duty))
-    pi.hardware_PWM(FAN_PWM_GPIO, PWM_FREQ, int(duty * 1_000_000 / 100))
-
-def get_log_file_path():
-    today = datetime.now().strftime("%Y-%m-%d")
-    return f"{LOG_DIR}/log_{today}.csv"
-
-def ensure_log_header(log_path):
-    if not os.path.exists(log_path):
-        with open(log_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Timestamp", "Temp_F", "Fan_Duty"])
-
-def post_to_web(temp_f, duty):
+def load_log_history():
     try:
-        requests.post(WEB_ENDPOINT, json={
-            "timestamp": datetime.now().isoformat(),
-            "temperature_f": round(temp_f, 2),
-            "fan_duty": round(duty, 2)
-        })
+        all_logs = sorted(glob.glob(f"{LOG_DIR}/log_*.csv"))
+        for log_file in all_logs:
+            with open(log_file, "r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if "Timestamp" in row and "Temp_F" in row and "Fan_Duty" in row:
+                        data.append({
+                            "timestamp": row["Timestamp"],
+                            "temperature_f": float(row["Temp_F"]),
+                            "fan_duty": float(row["Fan_Duty"])
+                        })
+        print(f"Loaded {len(data)} points from log history.")
     except Exception as e:
-        print("Failed to post to web:", e)
-
-def reboot_pi():
-    print("Unexpected error occurred — rebooting Raspberry Pi")
-    subprocess.call(["sudo", "reboot"])
-
-def fan_loop():
-    last_temp_f = None
-    integrated_error = 0
-    try:
-        os.makedirs(LOG_DIR, exist_ok=True)
-        print("Fan Control System with Web Server and PID Enabled")
-
-        while True:
-            log_path = get_log_file_path()
-            ensure_log_header(log_path)
-
-            try:
-                temp_c = sensor.temperature
-                temp_f = temp_c * 9 / 5 + 32
-            except Exception as e:
-                print(f"Sensor error: {e}")
-                temp_f = -459.67
-
-            if temp_f < 0 or temp_f > 500:
-                print(f"Invalid temperature reading: {temp_f:.2f} °F. Skipping this cycle.")
-                time.sleep(2)
-                continue
-
-            with target_lock:
-                target = target_temp
-
-            error = temp_f - target
-            dT = 2
-            derivative = 0 if last_temp_f is None else (temp_f - last_temp_f) / dT
-            integrated_error += error * dT
-            last_temp_f = temp_f
-
-            Kp = 4.0
-            Ki = 0.1
-            Kd = 8.0
-
-            duty = Kp * error + Ki * integrated_error + Kd * derivative
-            duty = max(0, min(100, duty))
-
-            print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
-            set_fan_duty(duty)
-
-            with open(log_path, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    datetime.now().isoformat(),
-                    round(temp_f, 2),
-                    round(duty, 2)
-                ])
-
-            post_to_web(temp_f, duty)
-            time.sleep(dT)
-
-    except Exception as err:
-        print("Fatal error in fan loop:", err)
-        reboot_pi()
-
-    except KeyboardInterrupt:
-        print("Shutting down.")
-    finally:
-        set_fan_duty(0)
-        pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
-        pi.stop()
-
-if __name__ == '__main__':
-    server_process = multiprocessing.Process(target=run_web_server)
-    server_process.start()
-    fan_loop()
-    server_process.join()
+        print(f"Failed to load log history: {e}")
