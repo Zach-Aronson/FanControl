@@ -166,6 +166,7 @@ def set_target():
     return redirect('/')
 
 def run_web_server():
+    print("Starting web server...")
     load_log_history()
     app.run(host='0.0.0.0', port=5000, debug=False)
 
@@ -185,3 +186,110 @@ def load_log_history():
         print(f"Loaded {len(data)} points from log history.")
     except Exception as e:
         print(f"Failed to load log history: {e}")
+
+spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
+cs = digitalio.DigitalInOut(board.D5)
+sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
+
+pi = pigpio.pi()
+if not pi.connected:
+    raise RuntimeError("Could not connect to pigpio daemon")
+
+def set_fan_duty(duty):
+    duty = max(0, min(100, duty))
+    pi.hardware_PWM(FAN_PWM_GPIO, PWM_FREQ, int(duty * 1_000_000 / 100))
+
+def get_log_file_path():
+    today = datetime.now().strftime("%Y-%m-%d")
+    return f"{LOG_DIR}/log_{today}.csv"
+
+def ensure_log_header(log_path):
+    if not os.path.exists(log_path):
+        with open(log_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Timestamp", "Temp_F", "Fan_Duty"])
+
+def post_to_web(temp_f, duty):
+    try:
+        requests.post(WEB_ENDPOINT, json={
+            "timestamp": datetime.now().isoformat(),
+            "temperature_f": round(temp_f, 2),
+            "fan_duty": round(duty, 2)
+        })
+    except Exception as e:
+        print("Failed to post to web:", e)
+
+def reboot_pi():
+    print("Unexpected error occurred — rebooting Raspberry Pi")
+    subprocess.call(["sudo", "reboot"])
+
+def fan_loop():
+    last_temp_f = None
+    integrated_error = 0
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        print("Fan Control System with Web Server and PID Enabled")
+
+        while True:
+            log_path = get_log_file_path()
+            ensure_log_header(log_path)
+
+            try:
+                temp_c = sensor.temperature
+                temp_f = temp_c * 9 / 5 + 32
+            except Exception as e:
+                print(f"Sensor error: {e}")
+                temp_f = -459.67
+
+            if temp_f < 0 or temp_f > 500:
+                print(f"Invalid temperature reading: {temp_f:.2f} °F. Skipping this cycle.")
+                time.sleep(2)
+                continue
+
+            with target_lock:
+                target = target_temp
+
+            error = temp_f - target
+            dT = 2
+            derivative = 0 if last_temp_f is None else (temp_f - last_temp_f) / dT
+            integrated_error += error * dT
+            last_temp_f = temp_f
+
+            Kp = 4.0
+            Ki = 0.1
+            Kd = 8.0
+
+            duty = Kp * error + Ki * integrated_error + Kd * derivative
+            duty = max(0, min(100, duty))
+
+            print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
+            set_fan_duty(duty)
+
+            with open(log_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    datetime.now().isoformat(),
+                    round(temp_f, 2),
+                    round(duty, 2)
+                ])
+
+            post_to_web(temp_f, duty)
+            time.sleep(dT)
+
+    except Exception as err:
+        print("Fatal error in fan loop:", err)
+        reboot_pi()
+
+    except KeyboardInterrupt:
+        print("Shutting down.")
+    finally:
+        set_fan_duty(0)
+        pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
+        pi.stop()
+
+if __name__ == '__main__':
+    print("Starting FanControl main")
+    server_process = multiprocessing.Process(target=run_web_server)
+    server_process.start()
+    fan_loop()
+    server_process.join()
