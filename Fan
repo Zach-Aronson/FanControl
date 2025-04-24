@@ -10,8 +10,6 @@ import csv
 from datetime import datetime
 import os
 
-
-
 # === CONFIGURATION ===
 FAN_PWM_GPIO = 18       # GPIO18 (Pin 12)
 FAN_RPM_GPIO = 17       # GPIO17 (Pin 11)
@@ -128,3 +126,4 @@ finally:
     set_fan_duty(0)
     pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
     pi.stop()
+
