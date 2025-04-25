@@ -28,7 +28,7 @@ LOG_DIR = "/home/Zach/FanControl/logs"
 STATE_FILE = "/home/Zach/FanControl/state.json"
 PWM_FREQ = 25000
 DEFAULT_TARGET_F = 110.0
-WEB_ENDPOINT = "http://127.0.0.1:5000/data"
+WEB_ENDPOINT = "http://127.0.0.1:5050/data"
 EMAIL_SENDER = "baja2025pi@gmail.com"
 EMAIL_PASSWORD = "etixczntucqtrfoi"
 EMAIL_RECEIVER = "zacharyaronson9@gmail.com"
@@ -173,7 +173,7 @@ def set_target():
 def run_web_server():
     print("Starting web server...")
     load_log_history()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5050, debug=False)
 
 def load_log_history():
     try:
