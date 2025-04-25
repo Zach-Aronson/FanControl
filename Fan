@@ -317,7 +317,7 @@ def fan_loop():
         pi.stop()
 
 if __name__ == '__main__':
-    print(\"Starting FanControl main\")
+    print("Starting FanControl main")
     server_process = multiprocessing.Process(target=run_web_server)
     server_process.start()
     email_logs_and_link()
