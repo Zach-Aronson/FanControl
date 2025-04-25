@@ -303,7 +303,7 @@ def fan_loop():
             duty = max(0, min(100, duty))
             print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
             set_fan_duty(duty)
-            with open(log_path, \"a\", newline=\"\") as f:
+            with open(log_path, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([datetime.now().isoformat(), round(temp_f, 2), round(duty, 2)])
             post_to_web(temp_f, duty)
