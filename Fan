@@ -301,7 +301,7 @@ def fan_loop():
             Kp, Ki, Kd = 4.0, 0.1, 8.0
             duty = Kp * error + Ki * integrated_error + Kd * derivative
             duty = max(0, min(100, duty))
-            print(f\"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%\")
+            print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
             set_fan_duty(duty)
             with open(log_path, \"a\", newline=\"\") as f:
                 writer = csv.writer(f)
