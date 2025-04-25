@@ -309,7 +309,7 @@ def fan_loop():
             post_to_web(temp_f, duty)
             time.sleep(dT)
     except Exception as err:
-        print(\"Fatal error in fan loop:\", err)
+        print("Fatal error in fan loop:", err)
         reboot_pi()
     finally:
         set_fan_duty(0)
