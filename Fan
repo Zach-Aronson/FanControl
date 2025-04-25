@@ -20,6 +20,19 @@ from email.message import EmailMessage
 import zipfile
 import socket
 
+# === Dynamic Port Setup ===
+PORT = 5050
+while True:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("0.0.0.0", PORT))
+            s.close()
+            break
+    except OSError:
+        PORT += 1
+        if PORT > 5100:
+            raise RuntimeError("No available ports found between 5050–5100")
+
 # === CONFIGURATION ===
 FAN_PWM_GPIO = 18
 FAN_RPM_GPIO = 17
@@ -28,11 +41,12 @@ LOG_DIR = "/home/Zach/FanControl/logs"
 STATE_FILE = "/home/Zach/FanControl/state.json"
 PWM_FREQ = 25000
 DEFAULT_TARGET_F = 110.0
-WEB_ENDPOINT = f"http://127.0.0.1:{port}/data"
+WEB_ENDPOINT = f"http://127.0.0.1:{PORT}/data"
 EMAIL_SENDER = "baja2025pi@gmail.com"
 EMAIL_PASSWORD = "etixczntucqtrfoi"
 EMAIL_RECEIVER = "zacharyaronson9@gmail.com"
 
+# === Flask Setup ===
 app = Flask(__name__)
 data = []
 data_lock = threading.Lock()
@@ -46,103 +60,59 @@ else:
 target_lock = threading.Lock()
 
 HTML_PAGE = """<!DOCTYPE html>
-<html lang=\"en\">
-<head>
-    <meta charset=\"UTF-8\">
-    <title>Fan Control Dashboard</title>
-    <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>
-</head>
-<body>
-    <h2>Live Fan Temperature (F) and Duty Cycle (%)</h2>
-    <form method=\"POST\" action=\"/set_target\">
-        <label for=\"target_temp\">Set Target Temp (°F):</label>
-        <input type=\"number\" id=\"target_temp\" name=\"target_temp\" step=\"0.1\" required>
-        <button type=\"submit\">Update</button>
-    </form>
-    <p>Current target: <span id=\"current_target\">Loading...</span> °F</p>
-    <canvas id=\"tempChart\" width=\"800\" height=\"400\"></canvas>
-    <script>
-        const ctx = document.getElementById('tempChart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {
-                        label: 'Temperature (F)',
-                        borderColor: 'rgb(255, 99, 132)',
-                        data: [],
-                        yAxisID: 'y1'
-                    },
-                    {
-                        label: 'Fan Duty (%)',
-                        borderColor: 'rgb(54, 162, 235)',
-                        data: [],
-                        yAxisID: 'y2'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y1: {
-                        type: 'linear',
-                        position: 'left',
-                        title: {
-                            display: true,
-                            text: 'Temperature (F)'
-                        }
-                    },
-                    y2: {
-                        type: 'linear',
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: 'Fan Duty (%)'
-                        },
-                        grid: {
-                            drawOnChartArea: false
-                        }
-                    }
-                }
-            }
-        });
-
-        function updateChart() {
-            fetch('/data')
-                .then(response => response.json())
-                .then(latest => {
-                    document.getElementById('current_target').textContent = latest.target_temp || "N/A";
-                    if (chart.data.labels.length > 50) {
-                        chart.data.labels.shift();
-                        chart.data.datasets[0].data.shift();
-                        chart.data.datasets[1].data.shift();
-                    }
-                    chart.data.labels.push(latest.timestamp);
-                    chart.data.datasets[0].data.push(latest.temperature_f);
-                    chart.data.datasets[1].data.push(latest.fan_duty);
-                    chart.update();
-                });
-        }
-
-        setInterval(updateChart, 2000);
-    </script>
-</body>
-</html>"""
+<html lang="en"><head><meta charset="UTF-8"><title>Fan Control Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
+<h2>Live Fan Temperature (F) and Duty Cycle (%)</h2>
+<form method="POST" action="/set_target">
+<label for="target_temp">Set Target Temp (°F):</label>
+<input type="number" id="target_temp" name="target_temp" step="0.1" required>
+<button type="submit">Update</button></form>
+<p>Current target: <span id="current_target">Loading...</span> °F</p>
+<canvas id="tempChart" width="800" height="400"></canvas>
+<script>
+const ctx = document.getElementById('tempChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Temperature (F)', borderColor: 'rgb(255, 99, 132)', data: [], yAxisID: 'y1' },
+      { label: 'Fan Duty (%)', borderColor: 'rgb(54, 162, 235)', data: [], yAxisID: 'y2' }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y1: { type: 'linear', position: 'left', title: { display: true, text: 'Temperature (F)' } },
+      y2: { type: 'linear', position: 'right', title: { display: true, text: 'Fan Duty (%)' }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+function updateChart() {
+  fetch('/data').then(res => res.json()).then(latest => {
+    document.getElementById('current_target').textContent = latest.target_temp || "N/A";
+    if (chart.data.labels.length > 50) {
+      chart.data.labels.shift(); chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift();
+    }
+    chart.data.labels.push(latest.timestamp);
+    chart.data.datasets[0].data.push(latest.temperature_f);
+    chart.data.datasets[1].data.push(latest.fan_duty);
+    chart.update();
+  });
+}
+setInterval(updateChart, 2000);
+</script></body></html>"""
 
 @app.route('/')
-def index():
-    return render_template_string(HTML_PAGE)
+def index(): return render_template_string(HTML_PAGE)
 
 @app.route('/data', methods=['GET'])
 def get_latest():
     with data_lock:
-        if data:
-            latest = data[-1].copy()
-            with target_lock:
-                latest['target_temp'] = target_temp
-            return jsonify(latest)
-        return jsonify({"timestamp": "n/a", "temperature_f": 0, "fan_duty": 0, "target_temp": target_temp})
+        latest = data[-1].copy() if data else {"timestamp": "n/a", "temperature_f": 0, "fan_duty": 0}
+        with target_lock:
+            latest["target_temp"] = target_temp
+        return jsonify(latest)
 
 @app.route('/data', methods=['POST'])
 def receive_data():
@@ -173,23 +143,8 @@ def set_target():
 def run_web_server():
     print("Starting web server...")
     load_log_history()
-    import socket
-
-# Auto-find a free port starting at 5050
-port = 5050
-while True:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("0.0.0.0", port))
-            s.close()
-            break
-    except OSError:
-        port += 1
-        if port > 5100:
-            raise RuntimeError("No available ports found between 5050–5100")
-
-print(f"Starting Flask server on port {port}")
-app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"Flask running on port {PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False)
 
 def load_log_history():
     try:
@@ -214,7 +169,6 @@ def email_logs_and_link():
         with zipfile.ZipFile(zip_path, 'w') as zipf:
             for log_file in glob.glob(f"{LOG_DIR}/log_*.csv"):
                 zipf.write(log_file)
-
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip_address = s.getsockname()[0]
@@ -224,7 +178,7 @@ def email_logs_and_link():
         msg['Subject'] = "FanControl Dashboard + Logs"
         msg['From'] = EMAIL_SENDER
         msg['To'] = EMAIL_RECEIVER
-        msg.set_content(f"FanControl is now online. View your dashboard at: http://{ip_address}:5000")
+        msg.set_content(f"FanControl is now online. View your dashboard at: http://{ip_address}:{PORT}")
 
         with open(zip_path, 'rb') as f:
             msg.add_attachment(f.read(), maintype='application', subtype='zip', filename='fan_logs.zip')
@@ -234,10 +188,10 @@ def email_logs_and_link():
             smtp.send_message(msg)
 
         print("Email with logs sent to", EMAIL_RECEIVER)
-
     except Exception as e:
         print("Failed to send email:", e)
 
+# === Sensor & PWM Setup ===
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 cs = digitalio.DigitalInOut(board.D5)
 sensor = adafruit_max31865.MAX31865(spi, cs, wires=3)
@@ -280,66 +234,46 @@ def fan_loop():
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
         print("Fan Control System with Web Server and PID Enabled")
-
         while True:
             log_path = get_log_file_path()
             ensure_log_header(log_path)
-
             try:
                 temp_c = sensor.temperature
                 temp_f = temp_c * 9 / 5 + 32
             except Exception as e:
                 print(f"Sensor error: {e}")
                 temp_f = -459.67
-
             if temp_f < 0 or temp_f > 500:
-                print(f"Invalid temperature reading: {temp_f:.2f} °F. Skipping this cycle.")
+                print(f"Invalid temp: {temp_f}F. Skipping...")
                 time.sleep(2)
                 continue
-
             with target_lock:
                 target = target_temp
-
             error = temp_f - target
             dT = 2
             derivative = 0 if last_temp_f is None else (temp_f - last_temp_f) / dT
             integrated_error += error * dT
             last_temp_f = temp_f
-
-            Kp = 4.0
-            Ki = 0.1
-            Kd = 8.0
-
+            Kp, Ki, Kd = 4.0, 0.1, 8.0
             duty = Kp * error + Ki * integrated_error + Kd * derivative
             duty = max(0, min(100, duty))
-
-            print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
+            print(f\"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%\")
             set_fan_duty(duty)
-
-            with open(log_path, "a", newline="") as f:
+            with open(log_path, \"a\", newline=\"\") as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    datetime.now().isoformat(),
-                    round(temp_f, 2),
-                    round(duty, 2)
-                ])
-
+                writer.writerow([datetime.now().isoformat(), round(temp_f, 2), round(duty, 2)])
             post_to_web(temp_f, duty)
             time.sleep(dT)
-
     except Exception as err:
-        print("Fatal error in fan loop:", err)
+        print(\"Fatal error in fan loop:\", err)
         reboot_pi()
-
-    except KeyboardInterrupt:
-        print("Shutting down.")
     finally:
         set_fan_duty(0)
         pi.hardware_PWM(FAN_PWM_GPIO, 0, 0)
         pi.stop()
 
 if __name__ == '__main__':
-    print("Starting FanControl main")
+    print(\"Starting FanControl main\")
     server_process = multiprocessing.Process(target=run_web_server)
     server_process.start()
     email_logs_and_link()
