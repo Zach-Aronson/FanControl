@@ -28,7 +28,7 @@ LOG_DIR = "/home/Zach/FanControl/logs"
 STATE_FILE = "/home/Zach/FanControl/state.json"
 PWM_FREQ = 25000
 DEFAULT_TARGET_F = 110.0
-WEB_ENDPOINT = "http://127.0.0.1:5050/data"
+WEB_ENDPOINT = f"http://127.0.0.1:{port}/data"
 EMAIL_SENDER = "baja2025pi@gmail.com"
 EMAIL_PASSWORD = "etixczntucqtrfoi"
 EMAIL_RECEIVER = "zacharyaronson9@gmail.com"
@@ -173,7 +173,23 @@ def set_target():
 def run_web_server():
     print("Starting web server...")
     load_log_history()
-    app.run(host='0.0.0.0', port=5050, debug=False)
+    import socket
+
+# Auto-find a free port starting at 5050
+port = 5050
+while True:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("0.0.0.0", port))
+            s.close()
+            break
+    except OSError:
+        port += 1
+        if port > 5100:
+            raise RuntimeError("No available ports found between 5050–5100")
+
+print(f"Starting Flask server on port {port}")
+app.run(host='0.0.0.0', port=port, debug=False)
 
 def load_log_history():
     try:
