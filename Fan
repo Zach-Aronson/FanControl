@@ -298,7 +298,7 @@ def fan_loop():
             derivative = 0 if last_temp_f is None else (temp_f - last_temp_f) / dT
             integrated_error += error * dT
             last_temp_f = temp_f
-            Kp, Ki, Kd = 4.0, 0.1, 8.0
+            Kp, Ki, Kd = 8.0, 0.1, 8.0
             duty = Kp * error + Ki * integrated_error + Kd * derivative
             duty = max(0, min(100, duty))
             print(f"Target: {target} | Temp: {temp_f:.1f} | Error: {error:.1f} | Duty: {duty:.1f}%")
